@@ -299,6 +299,19 @@ router.patch('/users/:id', async (req, res) => {
   res.json({ message: resetDevice ? 'Access and device reset' : 'Access updated', user });
 });
 
+// ─── DELETE USER ──────────────────────────────────────────────────────────────
+router.delete('/users/:id', async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    if (user.role === 'admin') return res.status(403).json({ message: 'Cannot delete an admin account' });
+    await Assignment.deleteMany({ userId: req.params.id });
+    await Result.deleteMany({ userId: req.params.id });
+    await User.findByIdAndDelete(req.params.id);
+    res.json({ message: 'User deleted' });
+  } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
 // ─── CATEGORY CRUD ────────────────────────────────────────────────────────────
 router.post('/categories', async (req, res) => {
   try {

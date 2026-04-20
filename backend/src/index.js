@@ -11,21 +11,45 @@ const reviewRoutes  = require('./routes/reviews');
 
 const app = express();
 
-app.use(cors({ origin: 'http://localhost:5173', credentials: true }));
-app.use(express.json());
+// FRONTEND_URL = your Vercel frontend URL (set in Railway env vars)
+const allowedOrigins = [
+  'http://localhost:5173',
+  process.env.FRONTEND_URL,
+].filter(Boolean);
+
+app.use(cors({
+  origin: (origin, cb) => {
+    // allow requests with no origin (mobile apps, curl, Postman)
+    if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
+    cb(new Error('Not allowed by CORS'));
+  },
+  credentials: true,
+}));
+app.use(express.json({ limit: '10mb' }));
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 app.use('/api/auth',    authRoutes);
-app.use('/api/admin',  adminRoutes);
-app.use('/api/user',   userRoutes);
-app.use('/api/reviews', reviewRoutes);   // public — no auth
+app.use('/api/admin',   adminRoutes);
+app.use('/api/user',    userRoutes);
+app.use('/api/reviews', reviewRoutes);
+
+// Serve React build in production
+if (process.env.NODE_ENV === 'production') {
+  const clientBuild = path.join(__dirname, '../../frontend/dist');
+  app.use(express.static(clientBuild));
+  app.get('*', (req, res) =>
+    res.sendFile(path.join(clientBuild, 'index.html'))
+  );
+}
 
 mongoose
   .connect(process.env.MONGO_URI)
   .then(() => {
+    const port = process.env.PORT || 5000;
     console.log('MongoDB connected');
-    app.listen(process.env.PORT, () =>
-      console.log(`Server running on port ${process.env.PORT}`)
-    );
+    app.listen(port, () => console.log(`Server running on port ${port}`));
   })
-  .catch((err) => console.error('MongoDB connection error:', err));
+  .catch((err) => {
+    console.error('MongoDB connection error:', err);
+    process.exit(1);
+  });

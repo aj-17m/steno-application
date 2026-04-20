@@ -629,6 +629,14 @@ export default function AdminDashboard() {
     } catch (err) { setCatMsg(makeMsg(err.response?.data?.message || 'Failed')); }
   };
 
+  const handleDeleteUser = async (u) => {
+    if (!confirm(`Delete user "${u.name}" (${u.email})?\n\nThis will immediately terminate their access and remove all their assignments and results. This cannot be undone.`)) return;
+    try {
+      await api.delete(`/admin/users/${u._id}`);
+      fetchAll();
+    } catch (err) { alert(err.response?.data?.message || 'Failed to delete user'); }
+  };
+
   const handleDeleteCat = async (id) => {
     if (!confirm('Delete this category? Tests in it will be uncategorized.')) return;
     await api.delete(`/admin/categories/${id}`); fetchAll();
@@ -1024,14 +1032,24 @@ export default function AdminDashboard() {
                               )}
                             </div>
                           </div>
-                          <button
-                            onClick={() => { setExtendUser(u); setExtendExpiry(u.accessExpiry ? new Date(u.accessExpiry).toISOString().slice(0,10) : ''); setExtendCooldown(u.reAttemptCooldown || 0); setExtendResetDevice(false); setExtendMsg(null); }}
-                            className="shrink-0 text-xs px-2.5 py-1.5 rounded-lg font-semibold transition"
-                            style={{ background:'var(--bg-surface)', border:'1px solid var(--border)', color:'var(--text-2)' }}
-                            onMouseEnter={e => e.currentTarget.style.borderColor='var(--border-hi)'}
-                            onMouseLeave={e => e.currentTarget.style.borderColor='var(--border)'}>
-                            {isExpired ? '🔓 Renew' : '✏️ Access'}
-                          </button>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              onClick={() => { setExtendUser(u); setExtendExpiry(u.accessExpiry ? new Date(u.accessExpiry).toISOString().slice(0,10) : ''); setExtendCooldown(u.reAttemptCooldown || 0); setExtendResetDevice(false); setExtendMsg(null); }}
+                              className="text-xs px-2.5 py-1.5 rounded-lg font-semibold transition"
+                              style={{ background:'var(--bg-surface)', border:'1px solid var(--border)', color:'var(--text-2)' }}
+                              onMouseEnter={e => e.currentTarget.style.borderColor='var(--border-hi)'}
+                              onMouseLeave={e => e.currentTarget.style.borderColor='var(--border)'}>
+                              {isExpired ? '🔓 Renew' : '✏️ Access'}
+                            </button>
+                            <button
+                              onClick={() => handleDeleteUser(u)}
+                              className="text-xs px-2.5 py-1.5 rounded-lg font-semibold transition"
+                              style={{ background:'rgba(239,68,68,0.10)', border:'1px solid rgba(239,68,68,0.20)', color:'#f87171' }}
+                              onMouseEnter={e => { e.currentTarget.style.background='rgba(239,68,68,0.20)'; e.currentTarget.style.borderColor='rgba(239,68,68,0.40)'; }}
+                              onMouseLeave={e => { e.currentTarget.style.background='rgba(239,68,68,0.10)'; e.currentTarget.style.borderColor='rgba(239,68,68,0.20)'; }}>
+                              🗑️ Delete
+                            </button>
+                          </div>
                         </div>
                       </div>
                     );

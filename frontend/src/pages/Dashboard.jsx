@@ -394,7 +394,7 @@ function StatsBar({ results }) {
 
 /* ── Tab Navigation ────────────────────────────────────── */
 const TABS = [
-  { id: 'tests',       label: 'Tests',       icon: '📝', shortLabel: 'Tests' },
+  { id: 'tests',       label: 'Steno Test',  icon: '⌨️', shortLabel: 'Steno' },
   { id: 'leaderboard', label: 'Leaderboard', icon: '🏆', shortLabel: 'Ranks' },
   { id: 'profile',     label: 'Profile',     icon: '👤', shortLabel: 'Profile' },
   { id: 'practice',    label: 'Practice',    icon: '✏️',  shortLabel: 'Practice' },
