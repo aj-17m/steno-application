@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e ' *)",
+      "Bash(node -e \"require\\('D:/st-application/backend/src/routes/admin.js'\\); console.log\\('✅ admin.js parses OK'\\)\")",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:krutidev-to-unicode.com)",
+      "Bash(grep -E \"\\(package\\\\.json|\\\\.js$\\)\")"
+    ]
+  }
+}
