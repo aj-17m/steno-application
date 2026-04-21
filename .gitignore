@@ -38,3 +38,7 @@ Thumbs.db
 # Cache
 .cache/
 *.cache
+
+# Local reference files
+PROJECT_REFERENCE.md
+HOW_TO_DEPLOY.md
