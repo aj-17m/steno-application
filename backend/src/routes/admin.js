@@ -202,16 +202,17 @@ router.get('/tests/:id', async (req, res) => {
 // ─── UPDATE TEST SETTINGS + CONTENT ──────────────────────────────────────────
 router.put('/tests/:id', async (req, res) => {
   try {
-    const { title, maxReplays, timer, isActive, category, extractedText, regenerateAudio: doRegen } = req.body;
+    const { title, maxReplays, timer, isActive, category, extractedText, regenerateAudio: doRegen, practiceEnabled } = req.body;
     const test = await Test.findById(req.params.id);
     if (!test) return res.status(404).json({ message: 'Test not found' });
 
-    if (title        !== undefined) test.title       = title.trim();
-    if (maxReplays   !== undefined) test.maxReplays  = Number(maxReplays);
-    if (timer        !== undefined) test.timer       = Number(timer);
-    if (isActive     !== undefined) test.isActive    = isActive;
-    if (category     !== undefined) test.category    = category || null;
-    if (extractedText !== undefined) test.extractedText = extractedText.trim();
+    if (title            !== undefined) test.title           = title.trim();
+    if (maxReplays       !== undefined) test.maxReplays      = Number(maxReplays);
+    if (timer            !== undefined) test.timer           = Number(timer);
+    if (isActive         !== undefined) test.isActive        = isActive;
+    if (category         !== undefined) test.category        = category || null;
+    if (extractedText    !== undefined) test.extractedText   = extractedText.trim();
+    if (practiceEnabled  !== undefined) test.practiceEnabled = practiceEnabled;
 
     // ── Optional: regenerate audio from updated text ───────────────────────
     if (doRegen && test.extractedText) {

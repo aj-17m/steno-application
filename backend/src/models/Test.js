@@ -12,6 +12,7 @@ const testSchema = new mongoose.Schema(
     timer: { type: Number, default: 30 },
     category: { type: mongoose.Schema.Types.ObjectId, ref: 'Category', default: null },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    practiceEnabled: { type: Boolean, default: false }, // admin can enable practice for this test
   },
   { timestamps: true }
 );

@@ -100,6 +100,27 @@ router.get('/tests/:testId', async (req, res) => {
   });
 });
 
+// ─── GET PRACTICE-ENABLED TESTS (assigned + practiceEnabled=true) ────────────
+router.get('/practice-tests', async (req, res) => {
+  try {
+    const assignments = await Assignment.find({ userId: req.user._id })
+      .populate({
+        path: 'testId',
+        select: '-extractedText -pdfPath',
+        populate: { path: 'category', model: 'Category' },
+      });
+
+    const practicePairs = assignments
+      .filter(a => a.testId && a.testId.isActive && a.testId.practiceEnabled)
+      .map(a => ({
+        assignmentId: a._id,
+        test: a.testId,
+      }));
+
+    res.json(practicePairs);
+  } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
 // ─── PRACTICE MODE (returns passage text for typing practice) ─────────────────
 router.get('/tests/:testId/practice', async (req, res) => {
   try {
@@ -111,6 +132,7 @@ router.get('/tests/:testId/practice', async (req, res) => {
 
     const test = await Test.findById(req.params.testId).populate('category');
     if (!test || !test.isActive) return res.status(404).json({ message: 'Test not found or inactive' });
+    if (!test.practiceEnabled) return res.status(403).json({ message: 'Practice not enabled for this test' });
 
     res.json({
       _id          : test._id,
