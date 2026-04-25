@@ -17,11 +17,17 @@ const { authenticate, requireAdmin } = require('../middleware/auth');
 const router = express.Router();
 router.use(authenticate, requireAdmin);
 
+// ─── Ensure upload dirs exist (Render ephemeral FS won't have them) ───────────
+const AUDIO_TMP = path.join(__dirname, '../../uploads/audio');
+const PDF_DIR   = path.join(__dirname, '../../uploads/pdfs');
+fs.mkdirSync(AUDIO_TMP, { recursive: true });
+fs.mkdirSync(PDF_DIR,   { recursive: true });
+
 // ─── Multer ───────────────────────────────────────────────────────────────────
 // PDFs → local disk (we only need them long enough to extract text)
 // Audio → memory buffer, then uploaded to Cloudinary for permanent storage
 const pdfStorage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, path.join(__dirname, '../../uploads/pdfs')),
+  destination: (req, file, cb) => cb(null, PDF_DIR),
   filename   : (req, file, cb) => cb(null, `${Date.now()}-${Math.round(Math.random()*1e9)}${path.extname(file.originalname)}`),
 });
 const memStorage = multer.memoryStorage();
@@ -94,7 +100,7 @@ router.post(
         audioType = 'uploaded';
       } else {
         // Generate audio using Python gTTS → temp file → push to Cloudinary
-        const tmpPath = path.join(__dirname, '../../uploads/audio', `${publicId}.mp3`);
+        const tmpPath = path.join(AUDIO_TMP, `${publicId}.mp3`);
         await generateAudio(extractedText, tmpPath);
         audioPath = await uploadFile(tmpPath, publicId); // also deletes tmpPath
         audioType = 'generated';
@@ -159,7 +165,7 @@ router.post('/tests/:id/regenerate-audio', async (req, res) => {
     await deleteByUrl(test.audioPath);
 
     const publicId  = `${Date.now()}-${Math.round(Math.random()*1e9)}`;
-    const tmpPath   = path.join(__dirname, '../../uploads/audio', `${publicId}.mp3`);
+    const tmpPath   = path.join(AUDIO_TMP, `${publicId}.mp3`);
     await generateAudio(test.extractedText, tmpPath);
     const newUrl    = await uploadFile(tmpPath, publicId); // deletes tmpPath
 
@@ -234,7 +240,7 @@ router.put('/tests/:id', async (req, res) => {
     if (doRegen && test.extractedText) {
       await deleteByUrl(test.audioPath);
       const pid     = `${Date.now()}-${Math.round(Math.random()*1e9)}`;
-      const tmpPath = path.join(__dirname, '../../uploads/audio', `${pid}.mp3`);
+      const tmpPath = path.join(AUDIO_TMP, `${pid}.mp3`);
       await generateAudio(test.extractedText, tmpPath);
       test.audioPath = await uploadFile(tmpPath, pid);
       test.audioType = 'generated';
@@ -265,7 +271,7 @@ router.post('/migrate-audio', async (req, res) => {
     for (const test of tests) {
       try {
         const pid     = `${Date.now()}-${Math.round(Math.random()*1e9)}`;
-        const tmpPath = path.join(__dirname, '../../uploads/audio', `${pid}.mp3`);
+        const tmpPath = path.join(AUDIO_TMP, `${pid}.mp3`);
         await generateAudio(test.extractedText, tmpPath);
         test.audioPath = await uploadFile(tmpPath, pid);
         test.audioType = 'generated';

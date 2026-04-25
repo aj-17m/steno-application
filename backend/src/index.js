@@ -33,6 +33,27 @@ app.use('/api/admin',   adminRoutes);
 app.use('/api/user',    userRoutes);
 app.use('/api/reviews', reviewRoutes);
 
+// ── Public diagnostic endpoint (no auth) ─────────────────────────────────────
+app.get('/api/health', async (req, res) => {
+  const cloudinary = require('cloudinary').v2;
+  let cloudinaryOk = false;
+  let cloudinaryErr = null;
+  try {
+    await cloudinary.api.ping();
+    cloudinaryOk = true;
+  } catch (e) {
+    cloudinaryErr = e.message;
+  }
+  res.json({
+    server      : 'ok',
+    cloudinary  : cloudinaryOk ? 'ok' : 'error',
+    cloudinaryErr,
+    cloud_name  : process.env.CLOUDINARY_CLOUD_NAME  || '(not set)',
+    api_key     : process.env.CLOUDINARY_API_KEY     ? '✓ set' : '✗ missing',
+    api_secret  : process.env.CLOUDINARY_API_SECRET  ? '✓ set' : '✗ missing',
+  });
+});
+
 // Serve React build in production
 if (process.env.NODE_ENV === 'production') {
   const clientBuild = path.join(__dirname, '../../frontend/dist');
