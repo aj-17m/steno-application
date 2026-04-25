@@ -100,9 +100,23 @@ router.get('/tests/:testId', async (req, res) => {
   });
 });
 
-// ─── GET PRACTICE-ENABLED TESTS (assigned + practiceEnabled=true) ────────────
+// ─── GET PRACTICE-ENABLED TESTS ──────────────────────────────────────────────
+// Returns two kinds:
+//   1. practiceOnly=true  → available to ALL active users, no assignment needed
+//   2. practiceOnly=false, practiceEnabled=true → only if user is assigned
 router.get('/practice-tests', async (req, res) => {
   try {
+    // 1. All practice-only tests (public practice content, no assignment required)
+    const practiceOnlyTests = await Test.find({ practiceOnly: true, isActive: true })
+      .select('-extractedText -pdfPath')
+      .populate('category', 'name icon color');
+
+    const practiceOnlyPairs = practiceOnlyTests.map(t => ({
+      assignmentId: null,
+      test: t,
+    }));
+
+    // 2. Assigned steno tests that also have practiceEnabled=true
     const assignments = await Assignment.find({ userId: req.user._id })
       .populate({
         path: 'testId',
@@ -110,29 +124,38 @@ router.get('/practice-tests', async (req, res) => {
         populate: { path: 'category', model: 'Category' },
       });
 
-    const practicePairs = assignments
-      .filter(a => a.testId && a.testId.isActive && a.testId.practiceEnabled)
-      .map(a => ({
-        assignmentId: a._id,
-        test: a.testId,
-      }));
+    const assignedPracticePairs = assignments
+      .filter(a => a.testId && a.testId.isActive && a.testId.practiceEnabled && !a.testId.practiceOnly)
+      .map(a => ({ assignmentId: a._id, test: a.testId }));
 
-    res.json(practicePairs);
+    // Combine, dedup by test _id
+    const seen = new Set();
+    const result = [...practiceOnlyPairs, ...assignedPracticePairs].filter(p => {
+      const id = p.test._id.toString();
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+
+    res.json(result);
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
 // ─── PRACTICE MODE (returns passage text for typing practice) ─────────────────
 router.get('/tests/:testId/practice', async (req, res) => {
   try {
-    const assignment = await Assignment.findOne({
-      userId: req.user._id,
-      testId: req.params.testId,
-    });
-    if (!assignment) return res.status(403).json({ message: 'Access denied' });
-
     const test = await Test.findById(req.params.testId).populate('category');
     if (!test || !test.isActive) return res.status(404).json({ message: 'Test not found or inactive' });
     if (!test.practiceEnabled) return res.status(403).json({ message: 'Practice not enabled for this test' });
+
+    // practiceOnly tests are open to all — no assignment check needed
+    if (!test.practiceOnly) {
+      const assignment = await Assignment.findOne({
+        userId: req.user._id,
+        testId: req.params.testId,
+      });
+      if (!assignment) return res.status(403).json({ message: 'Access denied' });
+    }
 
     res.json({
       _id          : test._id,
