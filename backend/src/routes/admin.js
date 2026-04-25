@@ -127,6 +127,60 @@ router.post(
   }
 );
 
+// ─── CREATE PRACTICE-ONLY CONTENT ────────────────────────────────────────────
+// No audio required. practiceOnly=true, practiceEnabled=true, isActive=true.
+router.post(
+  '/upload-practice',
+  upload.fields([{ name: 'pdf', maxCount: 1 }, { name: 'audio', maxCount: 1 }]),
+  async (req, res) => {
+    try {
+      const { title, timer, category } = req.body;
+      if (!title) return res.status(400).json({ message: 'Title required' });
+
+      const pdfFile   = req.files?.pdf?.[0];
+      const audioFile = req.files?.audio?.[0];
+
+      let extractedText = '';
+      const manualText  = req.body.masterText && req.body.masterText.trim();
+      if (manualText)       extractedText = manualText;
+      else if (pdfFile) {
+        const pdfData   = await extractPDF(pdfFile.path);
+        extractedText   = pdfData.text;
+      }
+      if (!extractedText) return res.status(400).json({ message: 'Passage text is required.' });
+
+      const pdfPath = pdfFile ? `uploads/pdfs/${pdfFile.filename}` : null;
+
+      let audioPath = null, audioType = 'none';
+      if (audioFile) {
+        const publicId = `${Date.now()}-${Math.round(Math.random()*1e9)}`;
+        audioPath = await uploadBuffer(audioFile.buffer, publicId);
+        audioType = 'uploaded';
+      }
+
+      const test = await Test.create({
+        title,
+        pdfPath,
+        extractedText,
+        audioPath,
+        audioType,
+        isActive       : true,
+        practiceEnabled: true,
+        practiceOnly   : true,
+        maxReplays     : 2,
+        timer          : timer ? Number(timer) : 30,
+        category       : category || null,
+        createdBy      : req.user._id,
+      });
+
+      res.status(201).json({ message: 'Practice content created successfully', test });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ message: 'Error creating practice content', error: err.message });
+    }
+  }
+);
+
 // ─── REPLACE AUDIO ────────────────────────────────────────────────────────────
 router.put(
   '/tests/:id/audio',

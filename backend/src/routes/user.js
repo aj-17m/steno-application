@@ -28,7 +28,7 @@ router.get('/tests', async (req, res) => {
     .sort({ createdAt: -1 });
 
   const activePairs = assignments
-    .filter((a) => a.testId && a.testId.isActive)
+    .filter((a) => a.testId && a.testId.isActive && !a.testId.practiceOnly)
     .map((a) => ({ assignmentId: a._id, test: a.testId }));
 
   // ── Per-test cooldown status ───────────────────────────────────────────────
