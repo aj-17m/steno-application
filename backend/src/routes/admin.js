@@ -2,8 +2,9 @@ const express  = require('express');
 const multer   = require('multer');
 const path     = require('path');
 const fs       = require('fs');
-const { extractPDF } = require('../utils/pdfExtractor');
+const { extractPDF }  = require('../utils/pdfExtractor');
 const { generateAudio } = require('../utils/ttsHelper');
+const { uploadBuffer, uploadFile, deleteByUrl } = require('../utils/cloudinaryHelper');
 
 const User       = require('../models/User');
 const Test       = require('../models/Test');
@@ -16,21 +17,32 @@ const { authenticate, requireAdmin } = require('../middleware/auth');
 const router = express.Router();
 router.use(authenticate, requireAdmin);
 
-// ─── Multer (PDF + Audio) ────────────────────────────────────────────────────
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const dest = file.mimetype === 'application/pdf'
-      ? path.join(__dirname, '../../uploads/pdfs')
-      : path.join(__dirname, '../../uploads/audio');
-    cb(null, dest);
-  },
-  filename: (req, file, cb) => {
-    const uid = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-    cb(null, uid + path.extname(file.originalname));
-  },
+// ─── Multer ───────────────────────────────────────────────────────────────────
+// PDFs → local disk (we only need them long enough to extract text)
+// Audio → memory buffer, then uploaded to Cloudinary for permanent storage
+const pdfStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, path.join(__dirname, '../../uploads/pdfs')),
+  filename   : (req, file, cb) => cb(null, `${Date.now()}-${Math.round(Math.random()*1e9)}${path.extname(file.originalname)}`),
 });
+const memStorage = multer.memoryStorage();
+
+// Smart storage: route audio to memory, PDFs to disk
+const hybridStorage = {
+  _handleFile(req, file, cb) {
+    if (file.mimetype.startsWith('audio/')) {
+      memStorage._handleFile(req, file, cb);
+    } else {
+      pdfStorage._handleFile(req, file, cb);
+    }
+  },
+  _removeFile(req, file, cb) {
+    if (file.buffer) cb(null); // memory — nothing to remove
+    else pdfStorage._removeFile(req, file, cb);
+  },
+};
+
 const upload = multer({
-  storage,
+  storage: hybridStorage,
   fileFilter: (req, file, cb) => {
     const ok = file.mimetype === 'application/pdf' || file.mimetype.startsWith('audio/');
     ok ? cb(null, true) : cb(new Error('Only PDF and audio files allowed'));
@@ -74,17 +86,17 @@ router.post(
       const pdfPath = pdfFile ? `uploads/pdfs/${pdfFile.filename}` : null;
 
       let audioPath, audioType;
+      const publicId = `${Date.now()}-${Math.round(Math.random()*1e9)}`;
 
       if (audioFile) {
-        // Admin uploaded audio file directly
-        audioPath = `uploads/audio/${audioFile.filename}`;
+        // Admin uploaded audio → buffer in memory → push to Cloudinary
+        audioPath = await uploadBuffer(audioFile.buffer, publicId);
         audioType = 'uploaded';
       } else {
-        // Generate audio using Python gTTS (best Hindi quality)
-        const audioFilename = `${Date.now()}-audio.mp3`;
-        const fullAudioPath = path.join(__dirname, '../../uploads/audio', audioFilename);
-        await generateAudio(extractedText, fullAudioPath);
-        audioPath = `uploads/audio/${audioFilename}`;
+        // Generate audio using Python gTTS → temp file → push to Cloudinary
+        const tmpPath = path.join(__dirname, '../../uploads/audio', `${publicId}.mp3`);
+        await generateAudio(extractedText, tmpPath);
+        audioPath = await uploadFile(tmpPath, publicId); // also deletes tmpPath
         audioType = 'generated';
       }
 
@@ -119,11 +131,14 @@ router.put(
       if (!test) return res.status(404).json({ message: 'Test not found' });
       if (!req.file) return res.status(400).json({ message: 'Audio file required' });
 
-      // Delete old file
-      const oldPath = path.join(__dirname, '../../', test.audioPath);
-      if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+      // Delete old Cloudinary asset (best-effort)
+      await deleteByUrl(test.audioPath);
 
-      test.audioPath = `uploads/audio/${req.file.filename}`;
+      // Upload new audio buffer to Cloudinary
+      const publicId = `${Date.now()}-${Math.round(Math.random()*1e9)}`;
+      const newUrl   = await uploadBuffer(req.file.buffer, publicId);
+
+      test.audioPath = newUrl;
       test.audioType = 'uploaded';
       await test.save();
 
@@ -140,14 +155,15 @@ router.post('/tests/:id/regenerate-audio', async (req, res) => {
     const test = await Test.findById(req.params.id);
     if (!test) return res.status(404).json({ message: 'Test not found' });
 
-    const oldPath = path.join(__dirname, '../../', test.audioPath);
-    if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+    // Delete old Cloudinary asset (best-effort)
+    await deleteByUrl(test.audioPath);
 
-    const audioFilename = `${Date.now()}-audio.mp3`;
-    const fullAudioPath = path.join(__dirname, '../../uploads/audio', audioFilename);
-    await generateAudio(test.extractedText, fullAudioPath);
+    const publicId  = `${Date.now()}-${Math.round(Math.random()*1e9)}`;
+    const tmpPath   = path.join(__dirname, '../../uploads/audio', `${publicId}.mp3`);
+    await generateAudio(test.extractedText, tmpPath);
+    const newUrl    = await uploadFile(tmpPath, publicId); // deletes tmpPath
 
-    test.audioPath = `uploads/audio/${audioFilename}`;
+    test.audioPath = newUrl;
     test.audioType = 'generated';
     await test.save();
 
