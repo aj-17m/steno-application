@@ -8,6 +8,7 @@ import {
   getCategoryForLayout, FONTS,
 } from '../utils/keyboardLayouts';
 import { kru2uni } from '../utils/krutidevConverter';
+import { evaluateSSC } from '../utils/hindiEvaluation';
 
 const PRACTICE_DURATIONS = [3, 5, 10, 15, 20, 30, 45, 60];
 
@@ -24,6 +25,187 @@ function getSegments(text) {
 function fmt(secs) {
   const m = Math.floor(secs / 60), s = secs % 60;
   return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+/* ── status helpers ─────────────────────────────────────────────────────────── */
+const STATUS_META = {
+  correct : { label:'Correct',   bg:'rgba(16,185,129,0.12)',  color:'#6ee7b7', dot:'#10b981' },
+  half    : { label:'Half',      bg:'rgba(245,158,11,0.13)',  color:'#fcd34d', dot:'#f59e0b' },
+  full    : { label:'Full',      bg:'rgba(239,68,68,0.12)',   color:'#fca5a5', dot:'#ef4444' },
+  replace : { label:'Replace',   bg:'rgba(239,68,68,0.12)',   color:'#fca5a5', dot:'#ef4444' },
+  missing : { label:'Missing',   bg:'rgba(139,92,246,0.12)',  color:'#c4b5fd', dot:'#8b5cf6' },
+  extra   : { label:'Extra',     bg:'rgba(99,102,241,0.12)',  color:'#a5b4fc', dot:'#6366f1' },
+};
+
+/* ── Practice Result Modal ───────────────────────────────────────────────────── */
+function PracticeResult({ summary, title, font, fmt, onPracticeAgain, onExit }) {
+  const [showDiff, setShowDiff] = useState(false);
+
+  const accuracyColor = summary.accuracy >= 90 ? '#10b981' : summary.accuracy >= 70 ? '#f59e0b' : '#ef4444';
+  const errorColor    = summary.totalError === 0 ? '#10b981' : '#ef4444';
+
+  const topCards = [
+    { label:'Speed',        value:`${summary.speed} WPM`,              color:'#6366f1' },
+    { label:'Accuracy',     value:`${summary.accuracy.toFixed(2)}%`,   color: accuracyColor },
+    { label:'Total Error',  value:`${summary.totalError}`,             color: errorColor },
+  ];
+
+  const breakdown = [
+    { label:'Full Mistakes',   value: summary.fullMistakes,   color:'#ef4444' },
+    { label:'Half Mistakes',   value: summary.halfMistakes,   color:'#f59e0b' },
+    { label:'Error %',         value:`${summary.errorPercentage.toFixed(2)}%`, color:'#f87171' },
+  ];
+
+  const wordStats = [
+    { label:'Total Words',   value: summary.totalWords },
+    { label:'Typed Words',   value: summary.typedWords },
+    { label:'Correct',       value: summary.correctWords,  color:'#10b981' },
+    { label:'Wrong',         value: summary.wrongWords,    color:'#ef4444' },
+    { label:'Missing',       value: summary.missingWords,  color:'#8b5cf6' },
+    { label:'Extra',         value: summary.extraWords,    color:'#6366f1' },
+    { label:'Replace',       value: summary.replaceErrors, color:'#f59e0b' },
+  ];
+
+  return (
+    <div className="fixed inset-0 z-30 bg-black/60 backdrop-blur-sm flex items-start justify-center p-4 overflow-y-auto">
+      <div className="w-full max-w-3xl my-4 rounded-3xl overflow-hidden"
+        style={{ background:'var(--bg-card)', border:'1px solid var(--border)', boxShadow:'0 30px 90px rgba(0,0,0,0.55)' }}>
+
+        {/* ── Header ── */}
+        <div className="p-5 sm:p-6 border-b" style={{ borderColor:'var(--border)' }}>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.2em] mb-2" style={{ color:'var(--text-3)' }}>Practice complete</p>
+              <h2 className="text-2xl font-black" style={{ color:'var(--text-1)' }}>{title}</h2>
+              <p className="text-sm mt-2" style={{ color:'var(--text-3)' }}>
+                Local-only result · Nothing is saved to the database · Time: {fmt(summary.timeTaken)}
+              </p>
+            </div>
+            <button onClick={onExit}
+              className="shrink-0 px-3 py-2 rounded-xl text-xs font-bold transition-all hover:scale-105"
+              style={{ background:'var(--bg-surface)', color:'var(--text-2)', border:'1px solid var(--border)' }}>
+              Exit
+            </button>
+          </div>
+        </div>
+
+        <div className="p-5 sm:p-6 space-y-4">
+
+          {/* ── Top 3 KPI cards ── */}
+          <div className="grid grid-cols-3 gap-3">
+            {topCards.map(item => (
+              <div key={item.label} className="text-center p-4 sm:p-5 rounded-2xl"
+                style={{ background:'var(--bg-surface)', border:'1px solid var(--border)' }}>
+                <div className="text-2xl sm:text-3xl font-black tabular-nums" style={{ color: item.color }}>{item.value}</div>
+                <div className="text-xs font-semibold uppercase tracking-wide mt-2" style={{ color:'var(--text-3)' }}>{item.label}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* ── Error breakdown ── */}
+          <div className="rounded-2xl p-4" style={{ background:'var(--bg-surface)', border:'1px solid var(--border)' }}>
+            <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color:'var(--text-3)' }}>Error Breakdown</p>
+            <div className="grid grid-cols-3 gap-3">
+              {breakdown.map(b => (
+                <div key={b.label} className="text-center p-3 rounded-xl"
+                  style={{ background:'var(--bg-card)', border:'1px solid var(--border)' }}>
+                  <div className="text-xl font-black tabular-nums" style={{ color: b.color || 'var(--text-1)' }}>{b.value}</div>
+                  <div className="text-xs mt-1" style={{ color:'var(--text-3)' }}>{b.label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* ── Word count stats ── */}
+          <div className="rounded-2xl p-4" style={{ background:'var(--bg-surface)', border:'1px solid var(--border)' }}>
+            <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color:'var(--text-3)' }}>Word Statistics</p>
+            <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
+              {wordStats.map(s => (
+                <div key={s.label} className="text-center p-2.5 rounded-xl"
+                  style={{ background:'var(--bg-card)', border:'1px solid var(--border)' }}>
+                  <div className="text-lg font-black tabular-nums" style={{ color: s.color || 'var(--text-1)' }}>{s.value}</div>
+                  <div className="text-[10px] leading-tight mt-0.5" style={{ color:'var(--text-3)' }}>{s.label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* ── Word comparison toggle ── */}
+          <div className="rounded-2xl overflow-hidden" style={{ border:'1px solid var(--border)' }}>
+            <button
+              onClick={() => setShowDiff(v => !v)}
+              className="w-full flex items-center justify-between px-4 py-3 transition-all"
+              style={{ background:'var(--bg-surface)', color:'var(--text-2)' }}>
+              <span className="text-xs font-bold uppercase tracking-widest" style={{ color:'var(--text-3)' }}>
+                Word-by-Word Comparison ({summary.wordComparison.length} words)
+              </span>
+              <span className="text-xs font-semibold px-2 py-1 rounded-lg"
+                style={{ background:'var(--bg-card)', color:'var(--text-3)' }}>
+                {showDiff ? 'Hide ▲' : 'Show ▼'}
+              </span>
+            </button>
+
+            {showDiff && (
+              <div className="p-4 max-h-72 overflow-y-auto" style={{ background:'var(--bg-card)' }}>
+                <div className="flex flex-wrap gap-1.5">
+                  {summary.wordComparison.map((w, i) => {
+                    const meta = STATUS_META[w.status] || STATUS_META.full;
+                    const tooltip = w.status === 'correct'
+                      ? w.master
+                      : w.status === 'missing'
+                        ? `Missing: ${w.master}`
+                        : w.status === 'extra'
+                          ? `Extra: ${w.typed}`
+                          : `${w.master} → ${w.typed}`;
+                    return (
+                      <span key={i}
+                        title={tooltip}
+                        className="inline-flex flex-col items-center px-2 py-1 rounded-lg text-xs leading-tight cursor-default select-all"
+                        style={{ background: meta.bg, border:`1px solid ${meta.dot}33`, fontFamily: font }}>
+                        <span className="font-semibold" style={{ color: meta.color }}>
+                          {w.status === 'missing' ? '—' : (w.typed ?? '—')}
+                        </span>
+                        {w.status !== 'correct' && (
+                          <span className="text-[9px] mt-0.5 opacity-70" style={{ color: meta.dot }}>
+                            {w.status === 'missing' ? w.master : w.status === 'extra' ? 'extra' : w.master}
+                          </span>
+                        )}
+                      </span>
+                    );
+                  })}
+                </div>
+                {/* Legend */}
+                <div className="flex flex-wrap gap-2 mt-4 pt-3" style={{ borderTop:'1px solid var(--border)' }}>
+                  {Object.entries(STATUS_META).map(([key, meta]) => (
+                    <span key={key} className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full"
+                      style={{ background: meta.bg, color: meta.color }}>
+                      <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ background: meta.dot }} />
+                      {meta.label}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ── Actions ── */}
+          <div className="flex flex-wrap gap-3 justify-end pt-1">
+            <button onClick={onPracticeAgain}
+              className="px-5 py-3 rounded-2xl font-black transition-all hover:scale-[1.02] active:scale-95"
+              style={{ background:'linear-gradient(135deg,#6366f1,#8b5cf6)', color:'#fff' }}>
+              Practice Again
+            </button>
+            <button onClick={onExit}
+              className="px-5 py-3 rounded-2xl font-semibold transition-all hover:scale-[1.02] active:scale-95"
+              style={{ background:'var(--bg-surface)', color:'var(--text-2)', border:'1px solid var(--border)' }}>
+              Change Test
+            </button>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  );
 }
 
 /* ── main component ─────────────────────────────────────────────────────────── */
@@ -51,7 +233,7 @@ export default function PracticePage() {
   const [started,   setStarted]   = useState(false);
 
   // layout / font
-  const [layout, setLayout] = useState('gail');
+  const [layout, setLayout] = useState('mangal');
   const [font,   setFont]   = useState(FONTS[0].value);
 
   // refs
@@ -191,45 +373,30 @@ export default function PracticePage() {
     resetTyping(false);
   }, []);
 
-  const submitPractice = useCallback(async () => {
+  const submitPractice = useCallback(() => {
     if (!selectedTest || submitLockRef.current) return;
     submitLockRef.current = true;
     clearInterval(timerRef.current);
     timerRef.current = null;
     setSubmitting(true);
+
     const currentText = textareaRef.current?.value ?? typedText;
     const timeTaken = startTimeRef.current
       ? Math.max(1, Math.round((Date.now() - startTimeRef.current) / 1000))
       : Math.max(1, elapsed);
 
-    const currentWords = currentText.trim().split(/\s+/).filter(Boolean);
-    const compareCount = Math.min(refWords.length, currentWords.length);
-    let correctWords = 0;
-    for (let i = 0; i < compareCount; i++) {
-      if (refWords[i] === currentWords[i]) correctWords++;
-    }
-
-    const errors = Math.max(refWords.length, currentWords.length) - correctWords;
-    const accuracy = refWords.length > 0
-      ? Math.round((correctWords / refWords.length) * 100)
-      : 100;
-    const speed = timeTaken > 0
-      ? Math.round((currentWords.length / timeTaken) * 60)
+    // Full SSC evaluation — runs client-side, nothing saved to DB
+    const eval_ = evaluateSSC(selectedTest.extractedText, currentText);
+    const speed  = timeTaken > 0
+      ? Math.round((eval_.typedWords / timeTaken) * 60)
       : 0;
 
-    setSummary({
-      speed,
-      accuracy,
-      errors,
-      timeTaken,
-      typedWords: currentWords.length,
-      correctWords,
-    });
+    setSummary({ ...eval_, speed, timeTaken });
     setElapsed(timeTaken);
     setSessionPhase('result');
     setSubmitting(false);
     submitLockRef.current = false;
-  }, [selectedTest, typedText, elapsed, refWords]);
+  }, [selectedTest, typedText, elapsed]);
 
   // keep ref in sync so auto-submit effects always call the latest version
   useEffect(() => { submitPracticeRef.current = submitPractice; }, [submitPractice]);
@@ -544,15 +711,12 @@ export default function PracticePage() {
             {/* Controls row */}
             <div className="flex flex-wrap items-center gap-2">
 
-              {/* Category buttons */}
+              {/* Layout buttons — Mangal | Kruti Dev */}
               {LANGUAGE_CATEGORIES.map(cat => {
                 const isActive = activeCat === cat.value;
                 return (
                   <button key={cat.value}
-                    onClick={() => {
-                      if (cat.layouts) setLayout(cat.layouts[0].value);
-                      else setLayout(cat.value);
-                    }}
+                    onClick={() => setLayout(cat.value)}
                     className="text-xs px-3 py-1.5 rounded-xl font-bold transition-all"
                     style={{
                       background: isActive ? 'var(--accent)' : 'var(--bg-surface)',
@@ -563,24 +727,6 @@ export default function PracticePage() {
                   </button>
                 );
               })}
-
-              {/* Sub-layouts (Hindi only) */}
-              {catObj?.layouts && (
-                <div className="flex gap-1">
-                  {catObj.layouts.map(sub => (
-                    <button key={sub.value}
-                      onClick={() => setLayout(sub.value)}
-                      className="text-xs px-2.5 py-1 rounded-lg font-semibold transition-all"
-                      style={{
-                        background: layout === sub.value ? 'rgba(99,102,241,0.2)' : 'var(--bg-surface)',
-                        color: layout === sub.value ? '#818cf8' : 'var(--text-3)',
-                        border: `1px solid ${layout === sub.value ? 'rgba(99,102,241,0.4)' : 'var(--border)'}`,
-                      }}>
-                      {sub.label}
-                    </button>
-                  ))}
-                </div>
-              )}
 
               <div className="ml-auto flex items-center gap-2">
                 {/* Font */}
@@ -690,65 +836,14 @@ export default function PracticePage() {
         )}
 
         {selectedTest && sessionPhase === 'result' && summary && (
-          <div className="fixed inset-0 z-30 bg-black/55 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="w-full max-w-3xl rounded-3xl overflow-hidden" style={{ background:'var(--bg-card)', border:'1px solid var(--border)', boxShadow:'0 30px 90px rgba(0,0,0,0.55)' }}>
-              <div className="p-5 sm:p-6 border-b" style={{ borderColor:'var(--border)' }}>
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-bold uppercase tracking-[0.2em] mb-2" style={{ color:'var(--text-3)' }}>Practice complete</p>
-                    <h2 className="text-2xl font-black" style={{ color:'var(--text-1)' }}>{selectedTest.title}</h2>
-                    <p className="text-sm mt-2" style={{ color:'var(--text-3)' }}>Local-only result. Nothing is saved to the database.</p>
-                  </div>
-                  <button
-                    onClick={exitPractice}
-                    className="shrink-0 px-3 py-2 rounded-xl text-xs font-bold transition-all hover:scale-105"
-                    style={{ background:'var(--bg-surface)', color:'var(--text-2)', border:'1px solid var(--border)' }}>
-                    Exit
-                  </button>
-                </div>
-              </div>
-
-              <div className="p-5 sm:p-6 space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {[
-                { label: 'Speed', value: `${summary.speed} WPM`, color: '#6366f1' },
-                { label: 'Accuracy', value: `${summary.accuracy}%`, color: summary.accuracy >= 90 ? '#10b981' : summary.accuracy >= 70 ? '#f59e0b' : '#ef4444' },
-                { label: 'Errors', value: summary.errors, color: summary.errors === 0 ? '#10b981' : '#ef4444' },
-              ].map(item => (
-                <div key={item.label} className="text-center p-5 rounded-2xl" style={{ background:'var(--bg-card)', border:'1px solid var(--border)' }}>
-                  <div className="text-3xl font-black tabular-nums" style={{ color: item.color }}>{item.value}</div>
-                  <div className="text-xs font-semibold uppercase tracking-wide mt-2" style={{ color:'var(--text-3)' }}>{item.label}</div>
-                </div>
-              ))}
-                </div>
-
-                <div className="rounded-2xl p-4" style={{ background:'var(--bg-surface)', border:'1px solid var(--border)' }}>
-                  <div className="flex items-center justify-between gap-3 flex-wrap">
-                    <div>
-                      <p className="text-xs font-bold uppercase tracking-widest" style={{ color:'var(--text-3)' }}>Session details</p>
-                      <p className="text-sm mt-1" style={{ color:'var(--text-2)' }}>
-                        {summary.correctWords} correct out of {summary.typedWords} typed words · {fmt(summary.timeTaken)}
-                      </p>
-                    </div>
-                    <div className="flex flex-wrap gap-3">
-                      <button
-                        onClick={() => { setSummary(null); setSessionPhase('setup'); resetTyping(false); }}
-                        className="px-5 py-3 rounded-2xl font-black transition-all hover:scale-[1.02] active:scale-95"
-                        style={{ background:'linear-gradient(135deg,#6366f1,#8b5cf6)', color:'#fff' }}>
-                        Practice Again
-                      </button>
-                      <button
-                        onClick={exitPractice}
-                        className="px-5 py-3 rounded-2xl font-semibold transition-all hover:scale-[1.02] active:scale-95"
-                        style={{ background:'var(--bg-surface)', color:'var(--text-2)', border:'1px solid var(--border)' }}>
-                        Change Test
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+          <PracticeResult
+            summary={summary}
+            title={selectedTest.title}
+            font={font}
+            fmt={fmt}
+            onPracticeAgain={() => { setSummary(null); setSessionPhase('setup'); resetTyping(false); }}
+            onExit={exitPractice}
+          />
         )}
       </div>
     </div>
