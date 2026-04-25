@@ -230,16 +230,13 @@ router.put('/tests/:id', async (req, res) => {
     if (extractedText    !== undefined) test.extractedText   = extractedText.trim();
     if (practiceEnabled  !== undefined) test.practiceEnabled = practiceEnabled;
 
-    // ── Optional: regenerate audio from updated text ───────────────────────
+    // ── Optional: regenerate audio from updated text ─────────────────────
     if (doRegen && test.extractedText) {
-      const oldPath = path.join(__dirname, '../../', test.audioPath);
-      if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
-
-      const audioFilename = `${Date.now()}-audio.mp3`;
-      const fullAudioPath = path.join(__dirname, '../../uploads/audio', audioFilename);
-      await generateAudio(test.extractedText, fullAudioPath);
-
-      test.audioPath = `uploads/audio/${audioFilename}`;
+      await deleteByUrl(test.audioPath);
+      const pid     = `${Date.now()}-${Math.round(Math.random()*1e9)}`;
+      const tmpPath = path.join(__dirname, '../../uploads/audio', `${pid}.mp3`);
+      await generateAudio(test.extractedText, tmpPath);
+      test.audioPath = await uploadFile(tmpPath, pid);
       test.audioType = 'generated';
     }
 
@@ -256,6 +253,54 @@ router.delete('/tests/:id', async (req, res) => {
   if (!test) return res.status(404).json({ message: 'Test not found' });
   await Assignment.deleteMany({ testId: req.params.id });
   res.json({ message: 'Test deleted' });
+});
+
+// ─── MIGRATE ALL LOCAL AUDIO → CLOUDINARY ────────────────────────────────────
+// One-shot endpoint: regenerates TTS for every test whose audioPath is still a local
+// "uploads/audio/…" path. Call once after setting up Cloudinary credentials.
+router.post('/migrate-audio', async (req, res) => {
+  try {
+    const tests = await Test.find({ audioPath: { $not: /^https?:\/\// } });
+    const results = [];
+    for (const test of tests) {
+      try {
+        const pid     = `${Date.now()}-${Math.round(Math.random()*1e9)}`;
+        const tmpPath = path.join(__dirname, '../../uploads/audio', `${pid}.mp3`);
+        await generateAudio(test.extractedText, tmpPath);
+        test.audioPath = await uploadFile(tmpPath, pid);
+        test.audioType = 'generated';
+        await test.save();
+        results.push({ id: test._id, title: test.title, ok: true, url: test.audioPath });
+      } catch (e) {
+        results.push({ id: test._id, title: test.title, ok: false, error: e.message });
+      }
+    }
+    res.json({ migrated: results.filter(r=>r.ok).length, failed: results.filter(r=>!r.ok).length, results });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ─── CHECK CLOUDINARY CONFIG ─────────────────────────────────────────────────
+router.get('/check-cloudinary', async (req, res) => {
+  try {
+    const cloudinary = require('cloudinary').v2;
+    // Ping Cloudinary with a no-op usage API call
+    const result = await cloudinary.api.ping();
+    res.json({
+      ok        : true,
+      status    : result.status,
+      cloud_name: process.env.CLOUDINARY_CLOUD_NAME || '(not set)',
+      api_key   : process.env.CLOUDINARY_API_KEY   ? '✓ set' : '✗ missing',
+      api_secret: process.env.CLOUDINARY_API_SECRET ? '✓ set' : '✗ missing',
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message,
+      cloud_name: process.env.CLOUDINARY_CLOUD_NAME || '(not set)',
+      api_key   : process.env.CLOUDINARY_API_KEY   ? '✓ set' : '✗ missing',
+      api_secret: process.env.CLOUDINARY_API_SECRET ? '✓ set' : '✗ missing',
+    });
+  }
 });
 
 // ─── TEST LEADERBOARD ─────────────────────────────────────────────────────────
