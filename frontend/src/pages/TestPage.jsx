@@ -317,12 +317,36 @@ export default function TestPage() {
       e.preventDefault();
 
       if (e.key === 'Backspace') {
-        // Remove last raw codepoint from buffer
-        const arr = [...krutidevBufferRef.current];
-        arr.pop();
-        krutidevBufferRef.current = arr.join('');
+        if (krutidevBufferRef.current.length > 0) {
+          // Buffer in sync — pop last raw keystroke and re-convert
+          const arr = [...krutidevBufferRef.current];
+          arr.pop();
+          krutidevBufferRef.current = arr.join('');
+          const uni = kru2uni(krutidevBufferRef.current);
+          el.value = uni;
+          el.selectionStart = el.selectionEnd = uni.length;
+          setTypedText(uni);
+        } else if (el.value) {
+          // Buffer empty (draft restored / external paste) — grapheme-aware fallback
+          let segs;
+          try {
+            segs = [...new Intl.Segmenter('hi', { granularity: 'grapheme' }).segment(el.value)]
+              .map(s => s.segment);
+          } catch {
+            segs = [...el.value];
+          }
+          const newVal = segs.slice(0, -1).join('');
+          el.value = newVal;
+          el.selectionStart = el.selectionEnd = newVal.length;
+          setTypedText(newVal);
+        }
+        return;
       } else if (e.key === 'Delete') {
         krutidevBufferRef.current = '';
+        el.value = '';
+        el.selectionStart = el.selectionEnd = 0;
+        setTypedText('');
+        return;
       } else if (e.key === 'Enter') {
         krutidevBufferRef.current += '\n';
       } else if (e.key.length === 1) {

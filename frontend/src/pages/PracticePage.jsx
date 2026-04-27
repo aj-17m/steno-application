@@ -421,9 +421,38 @@ export default function PracticePage() {
     /* ── KrutiDev ── */
     if (isKrutidev(layout)) {
       e.preventDefault();
-      if (e.key === 'Backspace')    { const a = [...krutidevBufRef.current]; a.pop(); krutidevBufRef.current = a.join(''); }
-      else if (e.key === 'Delete')  { krutidevBufRef.current = ''; }
-      else if (e.key === 'Enter')   { krutidevBufRef.current += '\n'; }
+      if (e.key === 'Backspace') {
+        if (krutidevBufRef.current.length > 0) {
+          // Buffer in sync — pop last raw keystroke and re-convert
+          const arr = [...krutidevBufRef.current];
+          arr.pop();
+          krutidevBufRef.current = arr.join('');
+          const uni = kru2uni(krutidevBufRef.current);
+          el.value = uni;
+          el.selectionStart = el.selectionEnd = uni.length;
+          setTypedText(uni);
+        } else if (el.value) {
+          // Buffer empty (draft restored / external paste) — grapheme-aware fallback
+          let segs;
+          try {
+            segs = [...new Intl.Segmenter('hi', { granularity: 'grapheme' }).segment(el.value)]
+              .map(s => s.segment);
+          } catch {
+            segs = [...el.value];
+          }
+          const newVal = segs.slice(0, -1).join('');
+          el.value = newVal;
+          el.selectionStart = el.selectionEnd = newVal.length;
+          setTypedText(newVal);
+        }
+        return;
+      } else if (e.key === 'Delete') {
+        krutidevBufRef.current = '';
+        el.value = '';
+        el.selectionStart = el.selectionEnd = 0;
+        setTypedText('');
+        return;
+      } else if (e.key === 'Enter')   { krutidevBufRef.current += '\n'; }
       else if (e.key.length === 1)  { krutidevBufRef.current += e.key; }
       else return;
       const uni = kru2uni(krutidevBufRef.current);
