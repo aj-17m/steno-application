@@ -433,15 +433,57 @@ export default function PracticePage() {
       return;
     }
 
-    /* ── Hindi buffer (inscript / cbi / gail) ── */
+    /* ── Hindi buffer (inscript / cbi / gail / mangal) ── */
     const map = LAYOUT_MAPS[layout];
     if (!map) return;
     e.preventDefault();
-    if (e.key === 'Backspace')    { const a = [...hindiBufRef.current]; a.pop(); hindiBufRef.current = a.join(''); }
-    else if (e.key === 'Delete')  { hindiBufRef.current = ''; }
-    else if (e.key === 'Enter')   { hindiBufRef.current += '\n'; }
-    else if (e.key.length === 1)  { hindiBufRef.current += e.key; }
-    else return;
+
+    if (e.key === 'Backspace') {
+      // Grapheme-aware delete on actual textarea — handles external IME tools
+      // (Gail/CBI driver, system Hindi keyboard) that bypass our buffer.
+      const current = el.value;
+      if (!current) return;
+      let segs;
+      try {
+        segs = [...new Intl.Segmenter('hi', { granularity: 'grapheme' }).segment(current)]
+          .map(s => s.segment);
+      } catch {
+        segs = [...current];
+      }
+      const newVal = segs.slice(0, -1).join('');
+      hindiBufRef.current = newVal;
+      el.value = newVal;
+      el.selectionStart = el.selectionEnd = newVal.length;
+      setTypedText(newVal);
+      return;
+    }
+
+    if (e.key === 'Delete') {
+      hindiBufRef.current = '';
+      el.value = '';
+      el.selectionStart = el.selectionEnd = 0;
+      setTypedText('');
+      return;
+    }
+
+    if (e.key === 'Enter') {
+      const newVal = el.value + '\n';
+      hindiBufRef.current = newVal;
+      el.value = newVal;
+      el.selectionStart = el.selectionEnd = newVal.length;
+      setTypedText(newVal);
+      return;
+    }
+
+    if (e.key.length === 1) {
+      // Resync buffer if external tool inserted chars that bypassed it
+      const expected = layout === 'inscript'
+        ? processInscriptBuffer(hindiBufRef.current)
+        : processHindiBuffer(hindiBufRef.current, map);
+      if (expected !== el.value) hindiBufRef.current = el.value;
+      hindiBufRef.current += e.key;
+    } else return;
+
     const uni = layout === 'inscript'
       ? processInscriptBuffer(hindiBufRef.current)
       : processHindiBuffer(hindiBufRef.current, map);

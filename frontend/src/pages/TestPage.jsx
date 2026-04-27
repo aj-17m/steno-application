@@ -354,14 +354,53 @@ export default function TestPage() {
     e.preventDefault();
 
     if (e.key === 'Backspace') {
-      const arr = [...hindiBufferRef.current];
-      arr.pop();
-      hindiBufferRef.current = arr.join('');
-    } else if (e.key === 'Delete') {
+      // ── Grapheme-aware delete on actual textarea content ────────────────
+      // We read from el.value, NOT from hindiBufferRef, so this works
+      // correctly even when an external typing tool (Gail/CBI IME, system
+      // Hindi keyboard driver) inserted characters that bypassed our buffer.
+      const current = el.value;
+      if (!current) return;
+      let segs;
+      try {
+        segs = [...new Intl.Segmenter('hi', { granularity: 'grapheme' }).segment(current)]
+          .map(s => s.segment);
+      } catch {
+        segs = [...current]; // fallback for very old browsers
+      }
+      const newVal = segs.slice(0, -1).join('');
+      hindiBufferRef.current = newVal; // keep buffer in sync with real content
+      el.value = newVal;
+      el.selectionStart = el.selectionEnd = newVal.length;
+      setTypedText(newVal);
+      return;
+    }
+
+    if (e.key === 'Delete') {
       hindiBufferRef.current = '';
-    } else if (e.key === 'Enter') {
-      hindiBufferRef.current += '\n';
-    } else if (e.key.length === 1) {
+      el.value = '';
+      el.selectionStart = el.selectionEnd = 0;
+      setTypedText('');
+      return;
+    }
+
+    if (e.key === 'Enter') {
+      const newVal = el.value + '\n';
+      hindiBufferRef.current = newVal;
+      el.value = newVal;
+      el.selectionStart = el.selectionEnd = newVal.length;
+      setTypedText(newVal);
+      return;
+    }
+
+    if (e.key.length === 1) {
+      // If an external tool inserted chars that bypassed our buffer, resync
+      // before appending the new key — prevents double-output glitches.
+      const expectedFromBuf = layout === 'inscript'
+        ? processInscriptBuffer(hindiBufferRef.current)
+        : processHindiBuffer(hindiBufferRef.current, map);
+      if (expectedFromBuf !== el.value) {
+        hindiBufferRef.current = el.value; // resync to actual content
+      }
       hindiBufferRef.current += e.key;
     } else {
       return;
