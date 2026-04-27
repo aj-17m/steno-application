@@ -5,7 +5,7 @@ import api from '../api/axios';
 import Leaderboard from '../components/Leaderboard';
 import ThemeToggle from '../components/ThemeToggle';
 
-const TABS = ['Tests', 'Practice', 'Categories', 'Users', 'Assignments', 'Results', 'Reviews'];
+const TABS = ['Upload Steno Test', 'Upload Practice Test', 'Categories', 'Users', 'Assignments', 'Results', 'Reviews'];
 
 /* ─── helpers ────────────────────────────────────────────── */
 const makeMsg = (text) => ({
@@ -596,7 +596,7 @@ function PracticeUploadForm({ categories, onCreated }) {
 export default function AdminDashboard() {
   const { logout } = useAuth();
   const navigate   = useNavigate();
-  const [tab, setTab] = useState('Tests');
+  const [tab, setTab] = useState('Upload Steno Test');
 
   const [tests,       setTests]       = useState([]);
   const [categories,  setCategories]  = useState([]);
@@ -609,6 +609,7 @@ export default function AdminDashboard() {
 
   const [userForm, setUserForm] = useState({ name:'', email:'', password:'', role:'user', accessExpiry:'' });
   const [userMsg,  setUserMsg]  = useState(null);
+  const [createdCreds, setCreatedCreds] = useState(null); // { name, email, password }
   const [extendUser,        setExtendUser]        = useState(null);
   const [extendExpiry,      setExtendExpiry]      = useState('');
   const [extendCooldown,    setExtendCooldown]    = useState(0);   // hours 0-5
@@ -706,9 +707,11 @@ export default function AdminDashboard() {
   };
 
   const handleCreateUser = async (e) => {
-    e.preventDefault(); setUserMsg(null);
+    e.preventDefault(); setUserMsg(null); setCreatedCreds(null);
+    const { name, email, password } = userForm;
     try {
       await api.post('/admin/users', userForm);
+      setCreatedCreds({ name, email, password });
       setUserMsg(makeMsg('User created successfully!'));
       setUserForm({ name:'', email:'', password:'', role:'user', accessExpiry:'' }); fetchAll();
     } catch (err) { setUserMsg(makeMsg(err.response?.data?.message || 'Failed')); }
@@ -935,13 +938,21 @@ export default function AdminDashboard() {
               style={tab===t
                 ? { borderBottomColor:'#6366f1', color:'#6366f1', borderBottomWidth:'2px' }
                 : { borderBottomColor:'transparent', color:'var(--text-2)', borderBottomWidth:'2px' }}>
-              {t === 'Categories' && '🗂️ '}{t === 'Tests' && `📋 `}{t === 'Users' && `👥 `}{t === 'Assignments' && `📌 `}{t === 'Results' && `📊 `}{t === 'Reviews' && `💬 `}{t}
-              {t === 'Tests'       && <span className="ml-1.5 text-xs px-1.5 py-0.5 rounded-full" style={{ background:'rgba(99,102,241,0.15)', color:'#818cf8' }}>{tests.length}</span>}
-              {t === 'Categories'  && <span className="ml-1.5 text-xs px-1.5 py-0.5 rounded-full" style={{ background:'rgba(99,102,241,0.15)', color:'#818cf8' }}>{categories.length}</span>}
-              {t === 'Users'       && <span className="ml-1.5 text-xs px-1.5 py-0.5 rounded-full" style={{ background:'rgba(99,102,241,0.15)', color:'#818cf8' }}>{users.length}</span>}
-              {t === 'Assignments' && <span className="ml-1.5 text-xs px-1.5 py-0.5 rounded-full" style={{ background:'rgba(99,102,241,0.15)', color:'#818cf8' }}>{assignments.length}</span>}
-              {t === 'Results'     && <span className="ml-1.5 text-xs px-1.5 py-0.5 rounded-full" style={{ background:'rgba(99,102,241,0.15)', color:'#818cf8' }}>{results.length}</span>}
-              {t === 'Reviews'    && <span className="ml-1.5 text-xs px-1.5 py-0.5 rounded-full" style={{ background:'rgba(99,102,241,0.15)', color:'#818cf8' }}>{reviews.length}</span>}
+              {t === 'Upload Steno Test'    && '📋 '}
+              {t === 'Upload Practice Test' && '✏️ '}
+              {t === 'Categories'           && '🗂️ '}
+              {t === 'Users'                && '👥 '}
+              {t === 'Assignments'          && '📌 '}
+              {t === 'Results'              && '📊 '}
+              {t === 'Reviews'              && '💬 '}
+              {t}
+              {t === 'Upload Steno Test'    && <span className="ml-1.5 text-xs px-1.5 py-0.5 rounded-full" style={{ background:'rgba(99,102,241,0.15)', color:'#818cf8' }}>{tests.filter(x=>!x.practiceOnly).length}</span>}
+              {t === 'Upload Practice Test' && <span className="ml-1.5 text-xs px-1.5 py-0.5 rounded-full" style={{ background:'rgba(99,102,241,0.15)', color:'#818cf8' }}>{tests.filter(x=>x.practiceOnly).length}</span>}
+              {t === 'Categories'           && <span className="ml-1.5 text-xs px-1.5 py-0.5 rounded-full" style={{ background:'rgba(99,102,241,0.15)', color:'#818cf8' }}>{categories.length}</span>}
+              {t === 'Users'                && <span className="ml-1.5 text-xs px-1.5 py-0.5 rounded-full" style={{ background:'rgba(99,102,241,0.15)', color:'#818cf8' }}>{users.length}</span>}
+              {t === 'Assignments'          && <span className="ml-1.5 text-xs px-1.5 py-0.5 rounded-full" style={{ background:'rgba(99,102,241,0.15)', color:'#818cf8' }}>{assignments.length}</span>}
+              {t === 'Results'              && <span className="ml-1.5 text-xs px-1.5 py-0.5 rounded-full" style={{ background:'rgba(99,102,241,0.15)', color:'#818cf8' }}>{results.length}</span>}
+              {t === 'Reviews'              && <span className="ml-1.5 text-xs px-1.5 py-0.5 rounded-full" style={{ background:'rgba(99,102,241,0.15)', color:'#818cf8' }}>{reviews.length}</span>}
             </button>
           ))}
         </div>
@@ -950,7 +961,7 @@ export default function AdminDashboard() {
       <main className="max-w-6xl mx-auto px-4 py-8">
 
         {/* ═══ TESTS ══════════════════════════════════════════ */}
-        {tab === 'Tests' && (
+        {tab === 'Upload Steno Test' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Left: create form */}
             <div>
@@ -1064,7 +1075,7 @@ export default function AdminDashboard() {
         )}
 
         {/* ═══ PRACTICE ═══════════════════════════════════════ */}
-        {tab === 'Practice' && (
+        {tab === 'Upload Practice Test' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Left: upload form */}
             <div style={cardStyle}>
@@ -1199,6 +1210,57 @@ export default function AdminDashboard() {
                   Create User
                 </button>
               </form>
+
+              {/* ── Credentials card — shown after user creation ── */}
+              {createdCreds && (
+                <div className="mt-4 rounded-2xl overflow-hidden"
+                  style={{ border:'1px solid rgba(16,185,129,0.35)', background:'rgba(16,185,129,0.07)' }}>
+                  <div className="flex items-center justify-between px-4 py-3"
+                    style={{ borderBottom:'1px solid rgba(16,185,129,0.20)', background:'rgba(16,185,129,0.10)' }}>
+                    <div className="flex items-center gap-2">
+                      <span>🔐</span>
+                      <span className="text-sm font-black" style={{ color:'#6ee7b7' }}>User Credentials</span>
+                    </div>
+                    <button onClick={() => setCreatedCreds(null)}
+                      className="text-xs px-2 py-1 rounded-lg"
+                      style={{ color:'var(--text-3)', background:'var(--bg-card)' }}>✕ Dismiss</button>
+                  </div>
+                  <div className="px-4 py-4 space-y-2">
+                    <p className="text-xs mb-3" style={{ color:'rgba(110,231,183,0.70)' }}>
+                      Save these credentials — the password cannot be recovered later.
+                    </p>
+                    {[
+                      { label:'Name',     value: createdCreds.name     },
+                      { label:'Email',    value: createdCreds.email    },
+                      { label:'Password', value: createdCreds.password },
+                    ].map(row => (
+                      <div key={row.label} className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl"
+                        style={{ background:'var(--bg-card)', border:'1px solid var(--border)' }}>
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-bold uppercase tracking-wider mb-0.5" style={{ color:'var(--text-3)' }}>{row.label}</p>
+                          <p className="text-sm font-mono font-semibold truncate" style={{ color:'var(--text-1)' }}>{row.value}</p>
+                        </div>
+                        <button
+                          onClick={() => navigator.clipboard.writeText(row.value)}
+                          className="shrink-0 text-xs px-2.5 py-1.5 rounded-lg font-semibold transition hover:scale-105"
+                          style={{ background:'rgba(99,102,241,0.15)', color:'#a5b4fc', border:'1px solid rgba(99,102,241,0.25)' }}
+                          title={`Copy ${row.label}`}>
+                          Copy
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      onClick={() => {
+                        const text = `Name: ${createdCreds.name}\nEmail: ${createdCreds.email}\nPassword: ${createdCreds.password}`;
+                        navigator.clipboard.writeText(text);
+                      }}
+                      className="w-full mt-1 text-xs py-2 rounded-xl font-bold transition hover:opacity-90"
+                      style={{ background:'rgba(16,185,129,0.15)', color:'#6ee7b7', border:'1px solid rgba(16,185,129,0.30)' }}>
+                      📋 Copy All Credentials
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div style={cardStyle}>
